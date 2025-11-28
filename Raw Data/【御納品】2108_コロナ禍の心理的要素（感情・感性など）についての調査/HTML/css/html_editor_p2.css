@@ -1,0 +1,34 @@
+/*強調1:太字*/
+.editor_css_01 {
+	font-weight:bold;
+}
+
+/*強調2:下線*/
+.editor_css_02 {
+	text-decoration:underline;
+}
+
+/*強調3:設問番号*/
+.editor_css_03 {
+	font-size:16px;
+	font-weight:bold;
+}
+
+/*強調3:黒字*/
+.editor_css_04 {
+	color:#000000;
+}
+
+/*強調3:赤字*/
+.editor_css_05 {
+	color:#FF0000;
+}
+
+/*強調3:青字*/
+.editor_css_06 {
+	color:#0000FF;
+}
+
+/*カスタマイズ用(随時)*/
+.editor_css_07 {
+}

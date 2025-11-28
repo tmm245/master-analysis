@@ -1,0 +1,6 @@
+"numeracy_name","numeracy_col","numeracy_type","Risk_num_est","Risk_num_p","Benefit_num_est","Benefit_num_p","Risk_AIC_main","Benefit_AIC_main"
+"mean_subjective_numeracy","mean_subjective_numeracy","continuous(centered)",-0.0574282401794363,0.235975162746113,0.0279381330889535,0.450007725871395,1060.69227486271,1078.89547183746
+"berlin_correct_count","berlin_correct_count","continuous(centered)",-0.113580703998965,0.00763971892481093,0.0367603243159989,0.259677177134629,1055.1577067221,1078.44071888843
+"health_correct_count","health_correct_count","continuous(centered)",-0.0311255371731036,0.502245515520365,0.0356797503644681,0.312515857499984,1061.73642568811,1078.53199460607
+"numAttitude_average","numAttitude_average","continuous(centered)",-0.0148037745219544,0.85982005733657,0.104004690829727,0.106770610065664,1060.97421982192,1075.75307856557
+"mean_cliticalThinking_attitude","mean_cliticalThinking_attitude","continuous(centered)",0.156812054513591,0.0350044835108124,-0.0765412888548749,0.178540962510859,1056.77792355505,1076.78325188558

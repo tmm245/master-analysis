@@ -1,0 +1,5 @@
+scale,n_items,alpha,N_complete
+Safeness_over_time,4,0.8072324489578764,220
+Effectiveness_over_time,4,0.9029222144480059,220
+Risk_over_time,2,0.8556119666481128,220
+Benefit_over_time,2,0.8393347926038655,220
