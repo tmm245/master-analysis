@@ -281,7 +281,7 @@ vacc_vars <- paste0("num_vaccination_", 2:4)
 # 2～4回目すべてをロング型にして集計
 tab_vacc_2to4 <- merged_data_complete %>%
   # num_vaccination_2,3,4 だけ取り出し
-  select(all_of(vacc_vars)) %>%
+  dplyr::select(dplyr::all_of(vacc_vars)) %>%
   # ロング型に変換（wave 列と num_vaccination 列を作る）
   pivot_longer(
     cols = everything(),
