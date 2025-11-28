@@ -1,6 +1,15 @@
+# RStudio のゴミ
 .Rproj.user
 .Rhistory
 .RData
-.httr-oauth
-.DS_Store
-.quarto
+.Ruserdata
+
+# 生データ・出力（例）
+data/
+output/
+figs/
+*.csv
+*.xlsx
+*.png
+*.jpg
+*.pdf
