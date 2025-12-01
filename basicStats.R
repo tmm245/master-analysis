@@ -1,3 +1,5 @@
+
+
 ############################################################
 # 修士論文：基礎統計 & 相関行列 出力コード
 # （psychのみ使用 + 年齢・性別・学歴 + Acceptance + t1/t2/t3/t4変数追加）
@@ -231,8 +233,8 @@ cor_test <- psych::corr.test(
   adjust = "none"   # 報告には補正なしp値を使用
 )
 
-cor_r <- cor_test$r  # 相関係数
-cor_p <- cor_test$p  # その r に対応する「素の p値」
+cor_r <- cor_test$r  # 相関係数（数値）
+cor_p <- cor_test$p  # その r に対応する「素の p値」（数値）
 
 cat("\n=== 相関係数 (r) ===\n")
 print(cor_r)
@@ -240,68 +242,91 @@ print(cor_r)
 cat("\n=== 相関の p値 (unadjusted) ===\n")
 print(cor_p)
 
-# CSV出力
+## 7-1. 相関係数の整形（小数第2位・上三角＋対角線を空欄） -------------
+
+# 数値として丸める
+r_mat_round <- round(cor_r, 2)
+
+# 文字列として「必ず小数第2位まで」出す
+r_chr <- format(r_mat_round, nsmall = 2)
+
+# 対角線を含む上三角を空欄に
+r_chr[upper.tri(r_chr, diag = TRUE)] <- ""
+
+# データフレーム化（行・列名を維持）
+r_df <- as.data.frame(r_chr)
+rownames(r_df) <- rownames(cor_r)
+colnames(r_df) <- colnames(cor_r)
+
+# CSV出力：相関係数
 write.csv(
-  cor_r,
+  r_df,
   file = "correlations_r_psych_LMMsample.csv",
-  row.names = TRUE
+  row.names = TRUE,
+  na = ""   # 念のため NA は空欄扱い
 )
 
+## 7-2. p値の整形（小数第3位・0.1以上は n.s） ---------------------------
+
+p_mat <- cor_p
+
+# 四捨五入（数値）
+p_round <- round(p_mat, 3)
+
+# 文字列に変換：
+#  - NA           → ""（空欄）
+#  - 0.1以上      → "n.s"
+#  - それ以外     → 小数第3位まで（例: "0.034"）
+p_chr <- ifelse(
+  is.na(p_round),
+  "",
+  ifelse(
+    p_round >= 0.1,
+    "n.s",
+    sprintf("%.3f", p_round)
+  )
+)
+
+p_df <- as.data.frame(p_chr)
+rownames(p_df) <- rownames(cor_p)
+colnames(p_df) <- colnames(cor_p)
+
+# CSV出力：p値
 write.csv(
-  cor_p,
+  p_df,
   file = "correlations_p_psych_LMMsample.csv",
-  row.names = TRUE
+  row.names = TRUE,
+  na = ""   # 念のため
 )
 
 cat("相関係数 (r) を 'correlations_r_psych_LMMsample.csv' に、p値を 'correlations_p_psych_LMMsample.csv' に出力しました。\n")
 
-############################################################
-# 作成されるファイル：
-#  - basic_descriptives_table1_psych_LMMsample.csv
-#      → age, gender, education, t1〜t4指標, Acceptance, TIC等を含む
-#         N, Mean, SD, Min, Max などの基礎統計。
-#  - correlations_r_psych_LMMsample.csv
-#      → 上記変数すべての Pearson 相関係数 (r)
-#  - correlations_p_psych_LMMsample.csv
-#      → 各 r に対応する unadjusted p値
-#
-# いずれも LMM で使った complete case サンプルに限定。
-# gender / education は数値として相関に入ります
-# （Table の注釈で「gender: 1=male, 2=female」
-#   「education: 1=junior high ... 8=other」などと説明）。
-############################################################
-
-#-----------------------------------------------------------------------#
 library(dplyr)
 library(tidyr)
 
 # 対象変数名
 vacc_vars <- paste0("num_vaccination_", 2:4)
 
-# 2～4回目すべてをロング型にして集計
 tab_vacc_2to4 <- merged_data_complete %>%
-  # num_vaccination_2,3,4 だけ取り出し
+  # num_vaccination_2〜4 だけ取り出す
   dplyr::select(dplyr::all_of(vacc_vars)) %>%
-  # ロング型に変換（wave 列と num_vaccination 列を作る）
-  pivot_longer(
-    cols = everything(),
-    names_to = "wave",
+  # ロング型に変換：wave列に列名、num_vaccination列に値
+  tidyr::pivot_longer(
+    cols      = everything(),
+    names_to  = "wave",
     values_to = "num_vaccination"
   ) %>%
   # 欠損は除外
-  filter(!is.na(num_vaccination)) %>%
-  # wave（2〜4）ごと×接種回数ごとに件数を集計
-  group_by(wave, num_vaccination) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  # waveごとに割合（％）を計算
-  group_by(wave) %>%
-  mutate(
+  dplyr::filter(!is.na(num_vaccination)) %>%
+  # wave × num_vaccination ごとに件数をカウント
+  dplyr::group_by(wave, num_vaccination) %>%
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+  # wave ごとのパーセントを計算
+  dplyr::group_by(wave) %>%
+  dplyr::mutate(
     percent = n / sum(n) * 100
   ) %>%
-  ungroup() %>%
-  arrange(wave, num_vaccination)
+  dplyr::ungroup() %>%
+  dplyr::arrange(wave, num_vaccination)
 
-# 結果を表示
 tab_vacc_2to4
-
-#-----------------------------------------------------------------------#

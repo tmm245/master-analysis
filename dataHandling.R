@@ -91,6 +91,21 @@ berlin_correct_answers <- function(df) {
   return(df)
 }
 
+# Safeness_1 を 7件法にリコードして「上書き」する関数
+# もともと 1,4,5,6,7,8,9 の7つの値 → 1,2,3,4,5,6,7 に変換
+recode_safeness1_7point <- function(df) {
+  df %>%
+    mutate(
+      Q42_1 = as.numeric(Q42_1),
+      Q42_1 = case_when(
+        Q42_1 == 1 ~ 1L,
+        Q42_1 >= 4 & Q42_1 <= 9 ~ Q42_1 - 2L,
+        TRUE ~ NA_integer_  # 想定外の値があれば NA（保険）
+      )
+    )
+}
+
+
 #-------------------------------------------------------------------------------------------------#
 #2回目データ処理
 
@@ -145,6 +160,15 @@ mean_cliticalThinking_attitude <- function(df) {
 berlin_oneItem <- function(df) {
   df$berlin_oneItem <- ifelse(df$Q13 == 2, 1, 0)
   return(df)
+}
+
+# 2回目：接種回数(QID1)の再コーディング（4 → 0）
+recode_QID1_vaccination2 <- function(df) {
+  df %>%
+    mutate(
+      QID1 = as.numeric(QID1),
+      QID1 = ifelse(QID1 == 4, 0, QID1)  # 4だけ0に
+    )
 }
 
 #-------------------------------------------------------------------------------------------------#
@@ -332,8 +356,8 @@ keep_longest_duration_by_id <- function(df) {
 
 
 # ハンドリング関数を適用
-df1 <- berlin_correct_answers(filter_data_forOne(survey1))
-df2 <- mean_cliticalThinking_attitude(berlin_oneItem(mean_subjective_numeracy(filter_data_forTwo(survey2))))
+df1 <- recode_safeness1_7point(berlin_correct_answers(filter_data_forOne(survey1)))
+df2 <- recode_QID1_vaccination2(mean_cliticalThinking_attitude(berlin_oneItem(mean_subjective_numeracy(filter_data_forTwo(survey2)))))
 df3 <- calculate_infoUse(health_correct_answers(filter_data_forThree(survey3)))
 df4 <- create_HBM_scores(reverse_items(filter_data_forFour(survey4)))
 
