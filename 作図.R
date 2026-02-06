@@ -4,6 +4,7 @@ library(tidyr)
 library(MASS)     # polr
 library(ggplot2)
 
+
 ## 1. A系カテゴリ（0,2,3,4+）のデータフレーム -------------------------
 
 ord_BR_t3t4_A <- merged_data_complete %>%
@@ -475,3 +476,186 @@ p_risk <- ggplot(
 
 # 図を表示
 print(p_risk)
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ==============================================================================
+# 1. データ整形 & 基礎集計
+# ==============================================================================
+
+# グループ分け（t4時点の接種回数 0回 vs 1回以上）
+plot_data_raw <- merged_data_complete %>%
+  mutate(
+    Group = case_when(
+      num_vaccination_4 == 0 ~ "Unvaccinated (0)",
+      num_vaccination_4 >= 1 ~ "Vaccinated (1+)",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  tidyr::drop_na(Group) 
+
+# 検定用データ（dplyr::selectを明示して競合回避）
+data_for_test <- plot_data_raw %>%
+  dplyr::select(id, Group, Safeness_1:Safeness_4, Effectiveness_1:Effectiveness_4)
+
+# プロット用データ (Long形式)
+plot_data_long <- plot_data_raw %>%
+  dplyr::transmute(
+    id, Group,
+    Safeness_t1 = Safeness_1, Safeness_t2 = Safeness_2, 
+    Safeness_t3 = Safeness_3, Safeness_t4 = Safeness_4,
+    Effectiveness_t1 = Effectiveness_1, Effectiveness_t2 = Effectiveness_2,
+    Effectiveness_t3 = Effectiveness_3, Effectiveness_t4 = Effectiveness_4
+  ) %>%
+  pivot_longer(
+    cols      = -c(id, Group),
+    names_to  = c("Measure", "TimePoint"),
+    names_sep = "_",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    TimePoint = factor(TimePoint, levels = c("t1", "t2", "t3", "t4")),
+    Group     = factor(Group, levels = c("Unvaccinated (0)", "Vaccinated (1+)"))
+  )
+
+# 平均と標準誤差
+summary_data <- plot_data_long %>%
+  group_by(Group, Measure, TimePoint) %>%
+  summarise(
+    Mean = mean(Score, na.rm = TRUE),
+    SE   = sd(Score, na.rm = TRUE) / sqrt(sum(!is.na(Score))),
+    .groups = "drop"
+  )
+
+# ==============================================================================
+# 2. 検定の自動実行 (対応のあるt検定)
+# ==============================================================================
+
+pairs_to_test <- list(c("t1", "t2"), c("t2", "t3"), c("t3", "t4"))
+measures <- c("Safeness", "Effectiveness")
+groups   <- c("Unvaccinated (0)", "Vaccinated (1+)")
+
+test_results <- data.frame()
+
+for (m in measures) {
+  for (g in groups) {
+    sub_df <- data_for_test %>% filter(Group == g)
+    
+    for (pair in pairs_to_test) {
+      t_prev <- pair[1]
+      t_curr <- pair[2]
+      
+      idx_prev <- gsub("t", "", t_prev)
+      idx_curr <- gsub("t", "", t_curr)
+      col_prev <- paste0(m, "_", idx_prev)
+      col_curr <- paste0(m, "_", idx_curr)
+      
+      # 対応のあるt検定
+      res <- t.test(sub_df[[col_prev]], sub_df[[col_curr]], paired = TRUE)
+      
+      p_val <- res$p.value
+      stars <- case_when(
+        p_val < 0.001 ~ "***",
+        p_val < 0.01  ~ "**",
+        p_val < 0.05  ~ "*",
+        TRUE          ~ "ns"
+      )
+      
+      if (stars != "ns") { 
+        test_results <- rbind(test_results, data.frame(
+          Measure   = m,
+          Group     = g,
+          TimeStart = t_prev,
+          TimeEnd   = t_curr,
+          P_val     = p_val,
+          Label     = stars
+        ))
+      }
+    }
+  }
+}
+
+# ==============================================================================
+# 3. アノテーション（ブラケット）座標の設定
+# ==============================================================================
+
+time_map <- c("t1" = 1, "t2" = 2, "t3" = 3, "t4" = 4)
+
+# 高さの設定
+base_y_unvac <- 6.5   # Unvaccinated用の基準高さ
+base_y_vac   <- 7.2   # Vaccinated用の基準高さ
+bracket_h    <- 0.2   # ブラケットの足の長さ
+
+annotation_df <- test_results %>%
+  mutate(
+    x_start = time_map[TimeStart],
+    x_end   = time_map[TimeEnd],
+    
+    y_pos = case_when(
+      Group == "Unvaccinated (0)" ~ base_y_unvac,
+      Group == "Vaccinated (1+)"  ~ base_y_vac
+    ),
+    
+    Group = factor(Group, levels = c("Unvaccinated (0)", "Vaccinated (1+)"))
+  )
+
+# ==============================================================================
+# 4. 作図
+# ==============================================================================
+
+ggplot() +
+  # --- メインの折れ線グラフ ---
+  geom_errorbar(data = summary_data, 
+                aes(x = TimePoint, ymin = Mean - SE, ymax = Mean + SE, group = Group, color = Group),
+                width = 0.1, size = 0.8) +
+  
+  geom_line(data = summary_data, 
+            aes(x = TimePoint, y = Mean, group = Group, color = Group),
+            size = 1.2) +
+  
+  geom_point(data = summary_data, 
+             aes(x = TimePoint, y = Mean, group = Group, color = Group),
+             size = 4) +
+  
+  # --- 有意差ブラケット ---
+  geom_segment(data = annotation_df,
+               aes(x = x_start, xend = x_end, y = y_pos, yend = y_pos, color = Group),
+               size = 0.5, show.legend = FALSE) +
+  geom_segment(data = annotation_df,
+               aes(x = x_start, xend = x_start, y = y_pos, yend = y_pos - bracket_h, color = Group),
+               size = 0.5, show.legend = FALSE) +
+  geom_segment(data = annotation_df,
+               aes(x = x_end, xend = x_end, y = y_pos, yend = y_pos - bracket_h, color = Group),
+               size = 0.5, show.legend = FALSE) +
+  
+  # --- アスタリスク ---
+  geom_text(data = annotation_df,
+            aes(x = (x_start + x_end) / 2, y = y_pos + 0.1, label = Label, color = Group),
+            size = 6, show.legend = FALSE, vjust = 0) +
+  
+  # --- 設定 ---
+  facet_wrap(~ Measure) +
+  scale_color_manual(values = c("Unvaccinated (0)" = "#E41A1C", "Vaccinated (1+)" = "#377EB8")) +
+  scale_y_continuous(limits = c(1, 8.5), breaks = 1:7) + 
+  
+  labs(
+    y = "Mean Score (1-7)",
+    x = "Time Point",
+    color = "Group (at t4)",
+    title = "Safeness & Effectiveness Trends"
+    # subtitle を削除しました
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 14),
+    
+    # 凡例を右側に配置
+    legend.position = "right",
+    
+    strip.background = element_rect(fill = "lightgray"),
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )

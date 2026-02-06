@@ -1,5 +1,5 @@
 ############################################################
-# コア分析コード（修正版：教育歴3カテゴリ統合）
+# コア分析コード（修正版：教育歴2カテゴリ統合 ＋ Wave交互作用LMM）
 ############################################################
 
 ## パッケージ ----------------------------------------------------------
@@ -28,24 +28,22 @@ if (length(missing_covars) > 0) {
               paste(missing_covars, collapse = ", ")))
 }
 
-## 前処理：gender, education を因子化 & カテゴリ統合  --------------------
+## 前処理：gender, education を因子化 & カテゴリ統合 (2区分) ------------
 # 統合方針: 
-# 1(中), 2(高) -> "HighSchool_Below"
-# 3(高専), 4(専門), 5(短大) -> "Voc_JuniorColl"
-# 6(大), 7(院) -> "Univ_Higher"
+# 1(中), 2(高), 3(高専), 4(専門), 5(短大) -> "Below_Univ" (大卒未満)
+# 6(大), 7(院) -> "Univ_Higher" (大卒以上)
 
 merged_data_complete <- merged_data_complete %>%
   mutate(
     gender = factor(gender),
     # 先にfactor化してから統合
     education_merged = fct_collapse(factor(education),
-                                    "HighSchool_Below"   = c("1", "2"),
-                                    "Voc_JuniorColl"     = c("3", "4", "5"),
-                                    "Univ_Higher"        = c("6", "7")
+                                    "Below_Univ"  = c("1", "2", "3", "4", "5"),
+                                    "Univ_Higher" = c("6", "7")
     )
   )
 
-cat("▼教育歴カテゴリ統合後の分布:\n")
+cat("▼教育歴カテゴリ統合後(2区分)の分布:\n")
 print(table(merged_data_complete$education_merged))
 
 ## 1. CT 列名のゆれ処理 ------------------------------------------------
@@ -72,10 +70,10 @@ cat("ニュメラシー列として使用する変数:", num_name, "\n")
 
 #######################################################################
 # (1) t-1 Effectiveness / Safeness → t Benefit / Risk の LMM
+#     ※ Waveとの交互作用を追加し、時期による影響差を検討
 #######################################################################
 
 ## 1-1. t3 / t4 用の long データを作成 -------------------------------
-# 関数内で education_merged を抽出するように変更
 mk_wave_BR <- function(df, wave, ct_name, num_name, covar_names = c("age", "gender", "education_merged")) {
   if (wave == "t3") {
     dplyr::transmute(
@@ -150,43 +148,53 @@ br_long2 <- br_long %>%
 cat("br_long2 の次元:", paste(dim(br_long2), collapse = " x "), "\n")
 print(table(br_long2$outcome, br_long2$wave))
 
-## 1-3. Benefit 用 LMM （共変量を追加・education_merged使用） ----------
+## 1-3. Benefit 用 LMM (Wave交互作用あり) -----------------------------
 br_ben <- br_long2 %>% filter(outcome == "Benefit")
 
-m_ben_cov <- lmer(
-  y ~ Eff_c * (CT_c + NUM_c) +
+m_ben_wave <- lmer(
+  y ~ 
+    # --- 主要変数とWaveの交互作用 ---
+    Eff_c * wave +
+    Safe_c * wave +
+    # --- CT/NUMとの交互作用 ---
+    Eff_c * (CT_c + NUM_c) +
     Safe_c * (CT_c + NUM_c) +
-    wave +
-    age + gender + education_merged +  # 変更箇所
+    # --- 共変量 ---
+    age + gender + education_merged +
     (1 | id),
   data = br_ben
 )
 
-cat("\n==== LMM (共変量付き): t-1 Eff/Safe → t Benefit ====\n")
-print(summary(m_ben_cov))
+cat("\n==== LMM (Wave交互作用込み): t-1 Eff/Safe → t Benefit ====\n")
+print(summary(m_ben_wave))
 
-## 1-4. Risk 用 LMM （共変量を追加・education_merged使用） -----------
+## 1-4. Risk 用 LMM (Wave交互作用あり) -------------------------------
 br_risk <- br_long2 %>% filter(outcome == "Risk")
 
-m_risk_cov <- lmer(
-  y ~ Eff_c * (CT_c + NUM_c) +
+m_risk_wave <- lmer(
+  y ~ 
+    # --- 主要変数とWaveの交互作用 ---
+    Eff_c * wave +
+    Safe_c * wave +
+    # --- CT/NUMとの交互作用 ---
+    Eff_c * (CT_c + NUM_c) +
     Safe_c * (CT_c + NUM_c) +
-    wave +
-    age + gender + education_merged +  # 変更箇所
+    # --- 共変量 ---
+    age + gender + education_merged +
     (1 | id),
   data = br_risk
 )
 
-cat("\n==== LMM (共変量付き): t-1 Eff/Safe → t Risk ====\n")
-print(summary(m_risk_cov))
+cat("\n==== LMM (Wave交互作用込み): t-1 Eff/Safe → t Risk ====\n")
+print(summary(m_risk_wave))
 
 
 #######################################################################
 # (2) t3 Benefit / Risk → t4 接種回数(3カテゴリ) の順序ロジスティック
-#     共変量（age, gender, education_merged）も含める
+#     ※2区分化した education_merged を使用
 #######################################################################
 
-## 2-1. 変数抽出（education_merged を使う） ---------------------------
+## 2-1. 変数抽出 ---------------------------
 cross_dat <- merged_data_complete %>%
   transmute(
     id,
@@ -197,7 +205,7 @@ cross_dat <- merged_data_complete %>%
     vacc4      = num_vaccination_4,
     age        = age,
     gender     = gender,
-    education_merged  = education_merged # 統合済み変数を使用
+    education_merged  = education_merged 
   ) %>%
   filter(
     !is.na(id),
@@ -212,7 +220,6 @@ cross_dat <- merged_data_complete %>%
   )
 
 cat("\ncross_dat 次元:", paste(dim(cross_dat), collapse = " x "), "\n")
-print(table(cross_dat$vacc4))
 
 ## 2-2. 接種回数を 3カテゴリ (0, 2, 3plus) にまとめる ------------------
 cross_dat <- cross_dat %>%
@@ -239,18 +246,18 @@ cross_dat <- cross_dat %>%
 cat("cross_dat（3カテゴリ）の次元:", paste(dim(cross_dat), collapse = " x "), "\n")
 print(addmargins(table(cross_dat$education_merged, cross_dat$vacc4_cat3))) # バランス確認
 
-## 2-3. 順序ロジスティック（polr: education_merged使用） --------------
+## 2-3. 順序ロジスティック（polr） -------------------------------------
 m_vacc3_cov <- polr(
   vacc4_cat3 ~ Benefit_t3_c * (CT_c + NUM_c) +
     Risk_t3_c    * (CT_c + NUM_c) +
-    age + gender + education_merged, # 変更箇所
+    age + gender + education_merged, 
   data   = cross_dat,
   method = "logistic",
   Hess   = TRUE
 )
 
 cat("\n==== 順序ロジスティック (共変量付き): t3 Benefit/Risk → t4 接種3カテゴリ ====\n")
-# 標準出力（係数のみ）
+# 標準出力
 print(summary(m_vacc3_cov))
 
 # p値の計算と表示
@@ -259,3 +266,27 @@ p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
 ctable <- cbind(ctable, "p value" = p)
 cat("\n--- 詳細統計量（p値付き）---\n")
 print(ctable)
+
+## ---------------------------------------------------------------------
+## 追加コード: オッズ比 (OR) と 95%信頼区間 (CI) の算出
+## ---------------------------------------------------------------------
+
+# 修正版コード: 行名をマッチさせて結合する
+ctable <- coef(summary(m_vacc3_cov))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+# 信頼区間
+CI <- exp(confint.default(m_vacc3_cov)) 
+
+# CIに存在する行（＝説明変数）だけを抽出して結合
+target_rows <- rownames(CI)
+
+results_OR <- cbind(
+  Estimate = ctable[target_rows, "Value"],
+  OR       = exp(ctable[target_rows, "Value"]),
+  CI,     # ここは元々 target_rows しかない
+  "p value" = p[target_rows]
+)
+
+cat("\n==== 順序ロジスティック回帰: オッズ比と95%信頼区間 (修正版) ====\n")
+print(round(results_OR, 3))
