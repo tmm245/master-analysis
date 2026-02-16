@@ -603,59 +603,232 @@ annotation_df <- test_results %>%
   )
 
 # ==============================================================================
-# 4. 作図
+# 4. 作図 (APAスタイル：タイトル中央・凡例右上配置版)
 # ==============================================================================
+
+# フォント設定（必要に応じて変更）
+apa_base_size <- 12
+apa_font_family <- "sans" 
 
 ggplot() +
   # --- メインの折れ線グラフ ---
   geom_errorbar(data = summary_data, 
-                aes(x = TimePoint, ymin = Mean - SE, ymax = Mean + SE, group = Group, color = Group),
-                width = 0.1, size = 0.8) +
+                aes(x = TimePoint, ymin = Mean - SE, ymax = Mean + SE, 
+                    group = Group, color = Group), 
+                width = 0.1, size = 0.7) +
   
   geom_line(data = summary_data, 
-            aes(x = TimePoint, y = Mean, group = Group, color = Group),
-            size = 1.2) +
+            aes(x = TimePoint, y = Mean, group = Group, color = Group, linetype = Group),
+            size = 1) +
   
   geom_point(data = summary_data, 
-             aes(x = TimePoint, y = Mean, group = Group, color = Group),
-             size = 4) +
+             aes(x = TimePoint, y = Mean, group = Group, color = Group, shape = Group),
+             size = 3) +
   
   # --- 有意差ブラケット ---
   geom_segment(data = annotation_df,
                aes(x = x_start, xend = x_end, y = y_pos, yend = y_pos, color = Group),
-               size = 0.5, show.legend = FALSE) +
+               size = 0.4, show.legend = FALSE) +
   geom_segment(data = annotation_df,
                aes(x = x_start, xend = x_start, y = y_pos, yend = y_pos - bracket_h, color = Group),
-               size = 0.5, show.legend = FALSE) +
+               size = 0.4, show.legend = FALSE) +
   geom_segment(data = annotation_df,
                aes(x = x_end, xend = x_end, y = y_pos, yend = y_pos - bracket_h, color = Group),
-               size = 0.5, show.legend = FALSE) +
+               size = 0.4, show.legend = FALSE) +
   
   # --- アスタリスク ---
   geom_text(data = annotation_df,
             aes(x = (x_start + x_end) / 2, y = y_pos + 0.1, label = Label, color = Group),
-            size = 6, show.legend = FALSE, vjust = 0) +
+            size = 5, show.legend = FALSE, vjust = 0, family = apa_font_family) +
   
-  # --- 設定 ---
+  # --- スケール設定 ---
+  scale_color_manual(values = c("Unvaccinated (0)" = "black", "Vaccinated (1+)" = "gray50")) + 
+  scale_linetype_manual(values = c("Unvaccinated (0)" = "solid", "Vaccinated (1+)" = "dashed")) +
+  scale_shape_manual(values = c("Unvaccinated (0)" = 16, "Vaccinated (1+)" = 17)) +
+  
+  # Y軸の範囲（凡例が入るスペースを確保するため、上限を少し余裕を持たせるのがコツです）
+  scale_y_continuous(limits = c(1, 9.0), breaks = 1:7, expand = c(0, 0)) +
+  
   facet_wrap(~ Measure) +
-  scale_color_manual(values = c("Unvaccinated (0)" = "#E41A1C", "Vaccinated (1+)" = "#377EB8")) +
-  scale_y_continuous(limits = c(1, 8.5), breaks = 1:7) + 
   
   labs(
-    y = "Mean Score (1-7)",
+    y = "Mean Score",
     x = "Time Point",
-    color = "Group (at t4)",
-    title = "Safeness & Effectiveness Trends"
-    # subtitle を削除しました
+    color = NULL, linetype = NULL, shape = NULL # 凡例タイトルを削除
   ) +
-  theme_bw() +
+  
+  # --- テーマ設定 ---
+  theme_classic(base_size = apa_base_size, base_family = apa_font_family) +
   theme(
-    text = element_text(size = 14),
+    axis.line = element_line(color = "black", size = 0.5),
+    axis.ticks = element_line(color = "black"),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "black"),
     
-    # 凡例を右側に配置
-    legend.position = "right",
+    # 【変更点1】タイトルを中央揃え（t2とt3の間）
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14, face = "bold", hjust = 0.5), 
     
-    strip.background = element_rect(fill = "lightgray"),
-    strip.text = element_text(face = "bold"),
-    panel.grid.minor = element_blank()
+    # 【変更点2】凡例を右上の図中に配置
+    # 座標は0〜1の範囲で指定します (x, y)。
+    # c(0.85, 0.95) は「右寄り・上寄り」を意味します。
+    # Safenessが右側のパネルにある場合、ここがSafenessのタイトルの下になります。
+    legend.position = c(1, 0.95), 
+    legend.justification = c(1, 1), # 右上を基準点にする
+    legend.background = element_rect(fill = "transparent"), # 背景を透明に
+    legend.key.width = unit(1.5, "cm")
   )
+
+# 作図用パッケージ
+if (!require("ggeffects")) install.packages("ggeffects")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("broom.mixed")) install.packages("broom.mixed") # 係数抽出用
+
+library(ggeffects)
+library(ggplot2)
+library(broom.mixed)
+library(dplyr)
+
+# ==============================================================================
+# 1. 交互作用プロット: Safeness × Wave (APA Style)
+# ==============================================================================
+library(ggeffects)
+library(ggplot2)
+
+# フォント設定
+apa_base_size <- 12
+apa_font_family <- "sans" # または "serif"
+
+# 予測値の計算 (既にある場合はスキップ可)
+# terms = c("Safe_c", "wave") -> x軸がSafe_c, グループ(線)がwave
+pred_safe_wave <- ggpredict(m_ben_wave, terms = c("Safe_c", "wave"))
+
+plot_safe_wave <- ggplot(pred_safe_wave, aes(x = x, y = predicted, group = group)) +
+  
+  # --- 信頼区間 (Ribbon) ---
+  # 白黒印刷でも邪魔にならないよう、薄いグレーまたは透明度を高めた色を使用
+  # show.legend = FALSE にして、凡例には線だけを表示させるのがスッキリさせるコツです
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), 
+              alpha = 0.1, linetype = 0, show.legend = FALSE) +
+  
+  # --- 回帰直線 ---
+  # linetype = group を指定して、実線・点線などを使い分ける
+  geom_line(aes(color = group, linetype = group), size = 1) +
+  
+  # --- スケール設定 (APA推奨: 白黒対応) ---
+  # 4時点あると仮定して、線種を割り当てます
+  scale_linetype_manual(values = c("solid", "dashed", "dotted", "dotdash")) +
+  
+  # 色はグレースケール(黒〜濃いグレー)にするか、視認性の良い色を指定
+  # ここでは前の図に合わせて黒とグレーの濃淡にします
+  scale_color_grey(start = 0, end = 0.6) + 
+  scale_fill_grey(start = 0, end = 0.6) +
+  
+  # --- ラベル ---
+  labs(
+    # APAでは図の中にタイトルを書かず、キャプションに書くのが一般的ですが
+    # 必要であればここに title = "..." を追加してください
+    x = "Perceived Safeness (Centered)",
+    y = "Predicted Perceived Benefit",
+    color = NULL, linetype = NULL # 凡例タイトルを削除
+  ) +
+  
+  # --- テーマ設定 ---
+  theme_classic(base_size = apa_base_size, base_family = apa_font_family) +
+  theme(
+    # 軸設定（変更なし）
+    axis.line = element_line(color = "black", size = 0.5),
+    axis.ticks = element_line(color = "black"),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "black"),
+    
+    # 凡例の位置設定
+    legend.position = c(0.2, 0.95), 
+    legend.justification = c(1, 1),
+    
+    # 【ここが変更点】凡例に枠線と背景色をつける
+    legend.background = element_rect(
+      fill = "white",    # 背景を白にしてグラフ線と重ならないようにする
+      color = "black",   # 枠線の色（黒）
+      size = 0.5         # 枠線の太さ
+    ),
+    
+    # 【推奨】枠線と文字の間に少し余白を入れる
+    legend.margin = margin(t = 4, r = 4, b = 4, l = 4),
+    
+    # テキストサイズ（必要に応じて）
+    legend.text = element_text(size = 10),
+    legend.key.width = unit(1.5, "cm")
+  )
+
+print(plot_safe_wave)
+
+# ==============================================================================
+# 2. 交互作用プロット: Effectiveness × Critical Thinking (plot_eff_ct)
+# ==============================================================================
+# terms = c("X軸", "グループ分け[平均±1SD]")
+pred_eff_ct <- ggpredict(m_ben_wave, terms = c("Eff_c", "CT_c [meansd]"))
+
+plot_eff_ct <- ggplot(pred_eff_ct, aes(x = x, y = predicted, color = group)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), 
+              alpha = 0.15, linetype = 0) +
+  geom_line(linewidth = 1) +
+  scale_color_viridis_d(name = "Critical Thinking", labels = c("Low (-1SD)", "Mean", "High (+1SD)")) +
+  scale_fill_viridis_d(name = "Critical Thinking", labels = c("Low (-1SD)", "Mean", "High (+1SD)")) +
+  labs(
+    title = "Interaction: Effectiveness × Critical Thinking",
+    # subtitle を削除しました
+    x = "Effectiveness (Centered)",
+    y = "Predicted Benefit"
+  ) +
+  theme_classic()
+
+print(plot_eff_ct)
+
+# ==============================================================================
+# 3. 係数プロット (Forest Plot) (plot_forest)
+# ==============================================================================
+# モデルから係数と信頼区間を抽出
+tidy_ben <- tidy(m_ben_wave, conf.int = TRUE) %>%
+  filter(effect == "fixed", term != "(Intercept)") # 切片は除外
+
+plot_forest <- ggplot(tidy_ben, aes(x = estimate, y = reorder(term, estimate))) +
+  # 基準線（0）
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  # エラーバー（信頼区間）
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  # 点（推定値）
+  geom_point(size = 3, color = "darkblue") +
+  labs(
+    title = "Fixed Effects on Benefit (LMM)",
+    # subtitle を削除しました
+    x = "Estimate (Coefficient)",
+    y = "Predictors"
+  ) +
+  theme_bw()
+
+print(plot_forest)
+
+# ==============================================================================
+# 4. 順序ロジスティック回帰の予測確率プロット (plot_polr)
+# ==============================================================================
+# 順序ロジスティックモデル(m_vacc3_cov)を使用
+# Benefit_t3_c の変化に応じた、各カテゴリ(0, 2, 3plus)の確率を計算
+pred_polr <- ggpredict(m_vacc3_cov, terms = "Benefit_t3_c [all]")
+
+plot_polr <- ggplot(pred_polr, aes(x = x, y = predicted, color = response.level)) +
+  geom_line(linewidth = 1.2) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = response.level), 
+              alpha = 0.1, linetype = 0) +
+  labs(
+    title = "Predicted Probabilities of Vaccination Count",
+    # subtitle を削除しました
+    x = "Benefit (t3, Centered)",
+    y = "Probability",
+    color = "Vaccination Count",
+    fill = "Vaccination Count"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(plot_polr)
